@@ -340,6 +340,8 @@
       if ( disabled.indexOf( plugin ) === -1 ) {
         disabled.push( plugin );
       }
+      
+      Popcorn.timeUpdate( instance, null, true );
 
       return instance;
     },
@@ -351,6 +353,8 @@
       if ( index > -1 ) {
         disabled.splice( index, 1 );
       }
+
+      Popcorn.timeUpdate( instance, null, true );
 
       return instance;
     },
@@ -788,7 +792,7 @@
       }
     }
     
-    this.timeUpdate( obj, null );
+    this.timeUpdate( obj, null, true );
 
     // Store references to user added trackevents in ref table
     if ( track._id ) {
@@ -926,7 +930,7 @@
     return obj.data.history[ obj.data.history.length - 1 ];
   };
 
-  Popcorn.timeUpdate = function( obj, event ) {
+  Popcorn.timeUpdate = function( obj, event, force ) {
 
     var currentTime = obj.media.currentTime,
         previousTime = obj.data.trackEvents.previousUpdateTime,
@@ -940,8 +944,59 @@
 
         byEnd, byStart, byAnimate, natives, type;
 
+    if (force) {
+
+      start = Math.min(start + 1, tracks.byStart.length - 2);
+
+      while ( start > 0 && tracks.byStart[ start ] ) {
+
+        byStart = tracks.byStart[ start ];
+        natives = byStart._natives;
+        type = natives && natives.type;
+        
+        if ( !natives ||
+            ( !!registryByName[ type ] ||
+              !!obj[ type ] ) ) {
+
+          if ( byStart.start <= currentTime &&
+                byStart.end > currentTime  &&
+                  obj.data.disabled.indexOf( type ) === -1 ) {
+
+            if ( !byStart._running ) {
+              byStart._running = true;
+              natives.start.call( obj, event, byStart );
+
+              // If the `frameAnimation` option is used,
+              // push the current byStart object into the `animating` cue
+              if ( obj.options.frameAnimation &&
+                    ( byStart && byStart._running && byStart._natives.frame ) ) {
+
+                byStart._natives.frame.call( obj, event, byAnimate, currentTime );
+              }
+            }
+          } else if ( byStart._running === true ) {
+
+            byStart._running = false;
+            natives.end.call( obj, event, byStart );
+            
+            if ( obj.options.frameAnimation && byStart._natives.frame ) {
+              animIndex = animating.indexOf( byStart );
+              if ( animIndex >= 0 ) {
+                animating.splice( animIndex, 1 );
+              }
+            }
+
+          }
+        }
+
+        start--;
+      }
+      
+      start = tracks.startIndex;
+    }
+
     //  Playbar advancing
-    if ( previousTime <= currentTime ) {
+    if ( previousTime < currentTime ) {
 
       while ( tracks.byEnd[ end ] && tracks.byEnd[ end ].end <= currentTime ) {
 
